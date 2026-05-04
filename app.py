@@ -211,28 +211,7 @@ with tab1:
             use_container_width=True, hide_index=True, height=540,
         )
 
-    with colR:
-        st.subheader("🔴 Top Overvalued")
-        top_over = df.nsmallest(top_n, "score_composite")[[
-            "ticker", "name", "sector", "country", "price", "pe_fwd",
-            "ev_ebitda", "fcf_yield", "roe", "ret_12m", "rsi",
-            "score_fund", "score_tech", "score_sent", "score_composite", "verdict"
-        ]].copy()
-        top_over["fcf_yield"] = (top_over["fcf_yield"]*100).round(1)
-        top_over["roe"] = (top_over["roe"]*100).round(1)
-        top_over["ret_12m"] = (top_over["ret_12m"]*100).round(1)
-        st.dataframe(
-            top_over.style.format({
-                "price": "{:.2f}", "pe_fwd": "{:.1f}", "ev_ebitda": "{:.1f}",
-                "fcf_yield": "{:.1f}%", "roe": "{:.1f}%", "ret_12m": "{:+.1f}%",
-                "rsi": "{:.0f}",
-                "score_fund": "{:+.2f}", "score_tech": "{:+.2f}",
-                "score_sent": "{:+.2f}", "score_composite": "{:+.2f}",
-            }).background_gradient(
-                subset=["score_composite"], cmap="RdYlGn", vmin=-1, vmax=1
-            ),
-            use_container_width=True, hide_index=True, height=540,
-        )
+ 
 
 
 # ---------- TAB 2: Deep Dive ----------
