@@ -331,15 +331,15 @@ with tab2:
         # Header
         cA, cB = st.columns([2, 1])
         with cA:
-    st.markdown(f"### {row['name']} ({row['ticker']})")
-    st.markdown(
-        f"{sector_badge(row['sector'])} "
-        f"<span style='color:#666; font-size:0.9rem;'>"
-        f"{row['industry']} · {row['country']} · "
-        f"{row['currency']} {row['price']:.2f} · "
-        f"Mkt cap {_fmt_mcap(row['market_cap'])}</span>",
-        unsafe_allow_html=True,
-    )
+            st.markdown(f"### {row['name']} ({row['ticker']})")
+            st.markdown(
+                f"{sector_badge(row['sector'])} "
+                f"<span style='color:#666; font-size:0.9rem;'>"
+                f"{row['industry']} · {row['country']} · "
+                f"{row['currency']} {row['price']:.2f} · "
+                f"Mkt cap {_fmt_mcap(row['market_cap'])}</span>",
+                unsafe_allow_html=True,
+            )
         with cB:
             verdict_class = "verdict-buy" if "BUY" in row["verdict"] else (
                             "verdict-sell" if "SELL" in row["verdict"] else "verdict-hold")
