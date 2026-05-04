@@ -1,5 +1,5 @@
 """
-Global Equity Scanner — Streamlit dashboard
+Diana's Global Equity Scanner — Streamlit dashboard
 Run with:  streamlit run app.py
 """
 
@@ -40,7 +40,7 @@ def _fmt_mcap(x):
 # PAGE CONFIG
 # ============================================================
 st.set_page_config(
-    page_title="Global Equity Scanner",
+    page_title="Diana's Global Equity Scanner",
     page_icon="📊",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -65,7 +65,7 @@ st.markdown("""
 # ============================================================
 # DATA LOADING (cached)
 # ============================================================
-@st.cache_data(ttl=3600, show_spinner=False)
+@st.cache_data(ttl=86400, show_spinner=False)
 def load_data(tickers: tuple, lookback_days: int):
     """Fetch + sentiment + score. Cached for 1h."""
     df = fetch_universe(list(tickers), max_workers=RUN_SETTINGS["max_workers"])
@@ -118,7 +118,7 @@ lookback = st.sidebar.slider("News lookback (days)", 1, 14, RUN_SETTINGS["news_l
 
 st.sidebar.markdown("---")
 run_btn = st.sidebar.button("🔄 Refresh data", type="primary", use_container_width=True)
-st.sidebar.caption("Data is cached for 1h. Click to force refresh.")
+st.sidebar.caption("Data is cached for 24h. Click to force refresh.")
 if run_btn:
     st.cache_data.clear()
 
