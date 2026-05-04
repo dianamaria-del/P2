@@ -298,22 +298,23 @@ with tab1:
     top_under["fcf_yield"] = (top_under["fcf_yield"]*100).round(1)
     top_under["roe"] = (top_under["roe"]*100).round(1)
     top_under["ret_12m"] = (top_under["ret_12m"]*100).round(1)
-    def _color_sector(val):
-    color = sector_color(val)
-    return f"background-color: {color}33; color: #222; font-weight: 600;"
 
-st.dataframe(
-    top_under.style.format({
-        "price": "{:.2f}", "pe_fwd": "{:.1f}", "ev_ebitda": "{:.1f}",
-        "fcf_yield": "{:.1f}%", "roe": "{:.1f}%", "ret_12m": "{:+.1f}%",
-        "rsi": "{:.0f}",
-        "score_fund": "{:+.2f}", "score_tech": "{:+.2f}",
-        "score_sent": "{:+.2f}", "score_composite": "{:+.2f}",
-    }).background_gradient(
-        subset=["score_composite"], cmap="RdYlGn", vmin=-1, vmax=1
-    ).map(_color_sector, subset=["sector"]),
-    use_container_width=True, hide_index=True, height=540,
-)
+    def _color_sector(val):
+        color = sector_color(val)
+        return f"background-color: {color}33; color: #222; font-weight: 600;"
+
+    st.dataframe(
+        top_under.style.format({
+            "price": "{:.2f}", "pe_fwd": "{:.1f}", "ev_ebitda": "{:.1f}",
+            "fcf_yield": "{:.1f}%", "roe": "{:.1f}%", "ret_12m": "{:+.1f}%",
+            "rsi": "{:.0f}",
+            "score_fund": "{:+.2f}", "score_tech": "{:+.2f}",
+            "score_sent": "{:+.2f}", "score_composite": "{:+.2f}",
+        }).background_gradient(
+            subset=["score_composite"], cmap="RdYlGn", vmin=-1, vmax=1
+        ).map(_color_sector, subset=["sector"]),
+        use_container_width=True, hide_index=True, height=540,
+    )
 
 
 # ---------- TAB 2: Deep Dive ----------
