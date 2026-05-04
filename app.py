@@ -185,33 +185,28 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs([
 
 # ---------- TAB 1: Rankings ----------
 with tab1:
-    colL = st.columns(1)
-
-    with colL:
-        st.subheader("🟢 Top Undervalued")
-        top_n = st.slider("Show top N", 5, 40, 15, key="under_n")
-        top_under = df.nlargest(top_n, "score_composite")[[
-            "ticker", "name", "sector", "country", "price", "pe_fwd",
-            "ev_ebitda", "fcf_yield", "roe", "ret_12m", "rsi",
-            "score_fund", "score_tech", "score_sent", "score_composite", "verdict"
-        ]].copy()
-        top_under["fcf_yield"] = (top_under["fcf_yield"]*100).round(1)
-        top_under["roe"] = (top_under["roe"]*100).round(1)
-        top_under["ret_12m"] = (top_under["ret_12m"]*100).round(1)
-        st.dataframe(
-            top_under.style.format({
-                "price": "{:.2f}", "pe_fwd": "{:.1f}", "ev_ebitda": "{:.1f}",
-                "fcf_yield": "{:.1f}%", "roe": "{:.1f}%", "ret_12m": "{:+.1f}%",
-                "rsi": "{:.0f}",
-                "score_fund": "{:+.2f}", "score_tech": "{:+.2f}",
-                "score_sent": "{:+.2f}", "score_composite": "{:+.2f}",
-            }).background_gradient(
-                subset=["score_composite"], cmap="RdYlGn", vmin=-1, vmax=1
-            ),
-            use_container_width=True, hide_index=True, height=540,
-        )
-
- 
+    st.subheader("🟢 Top Undervalued")
+    top_n = st.slider("Show top N", 5, 40, 15, key="under_n")
+    top_under = df.nlargest(top_n, "score_composite")[[
+        "ticker", "name", "sector", "country", "price", "pe_fwd",
+        "ev_ebitda", "fcf_yield", "roe", "ret_12m", "rsi",
+        "score_fund", "score_tech", "score_sent", "score_composite", "verdict"
+    ]].copy()
+    top_under["fcf_yield"] = (top_under["fcf_yield"]*100).round(1)
+    top_under["roe"] = (top_under["roe"]*100).round(1)
+    top_under["ret_12m"] = (top_under["ret_12m"]*100).round(1)
+    st.dataframe(
+        top_under.style.format({
+            "price": "{:.2f}", "pe_fwd": "{:.1f}", "ev_ebitda": "{:.1f}",
+            "fcf_yield": "{:.1f}%", "roe": "{:.1f}%", "ret_12m": "{:+.1f}%",
+            "rsi": "{:.0f}",
+            "score_fund": "{:+.2f}", "score_tech": "{:+.2f}",
+            "score_sent": "{:+.2f}", "score_composite": "{:+.2f}",
+        }).background_gradient(
+            subset=["score_composite"], cmap="RdYlGn", vmin=-1, vmax=1
+        ),
+        use_container_width=True, hide_index=True, height=540,
+    )
 
 
 # ---------- TAB 2: Deep Dive ----------
