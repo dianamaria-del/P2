@@ -126,7 +126,7 @@ if run_btn:
 # ============================================================
 # HEADER
 # ============================================================
-st.title("📊 Global Equity Scanner")
+st.title("📊 Diana's Global Equity Scanner")
 st.markdown(
     "<div class='small'>Multi-factor screen across global large-caps · "
     "Fundamentals + Technicals + News sentiment</div>",
