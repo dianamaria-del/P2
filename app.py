@@ -66,14 +66,23 @@ st.markdown("""
 # DATA LOADING (cached)
 # ============================================================
 @st.cache_data(ttl=86400, show_spinner=False)
-def load_data(tickers: tuple, lookback_days: int):
-    """Fetch + sentiment + score. Cached for 1h."""
+def load_data(tickers: tuple, lookback_days: int, scan_day: str):
+    """Fetch + sentiment + score. The scan_day parameter forces a new
+    cache entry once per calendar day, ensuring fresh data daily."""
     df = fetch_universe(list(tickers), max_workers=RUN_SETTINGS["max_workers"])
     if df.empty:
         return df
     df = add_sentiment_column(df, lookback_days=lookback_days)
     df = compute_composite(df)
     return df
+
+
+def get_scan_day_key():
+    """Returns a string that changes once per day at midnight US Eastern.
+    Used as a cache-busting key so a fresh scan happens once per day."""
+    from datetime import datetime, timezone, timedelta
+    et_now = datetime.now(timezone.utc) + timedelta(hours=-5)
+    return et_now.strftime("%Y-%m-%d")
 
 
 # ============================================================
@@ -115,10 +124,24 @@ st.sidebar.markdown("### News")
 lookback = st.sidebar.slider("News lookback (days)", 1, 14, RUN_SETTINGS["news_lookback_days"])
 
 st.sidebar.markdown("---")
-run_btn = st.sidebar.button("🔄 Refresh data", type="primary", use_container_width=True)
-st.sidebar.caption("Data is cached for 24h. Click to force refresh.")
-if run_btn:
-    st.cache_data.clear()
+st.sidebar.markdown("### Data freshness")
+
+try:
+    from budget import hours_since_last_scan, record_scan
+    hours_since = hours_since_last_scan()
+except Exception:
+    hours_since = 999
+    def record_scan(): pass
+
+if hours_since >= 24:
+    st.sidebar.info("🔄 Fresh scan will run on this visit.")
+else:
+    hours_left = 24 - hours_since
+    st.sidebar.success(
+        f"✅ Data is current.\n\n"
+        f"Last scan: {hours_since:.1f}h ago.\n\n"
+        f"Next auto-refresh in {hours_left:.1f}h."
+    )
 
 
 # ============================================================
@@ -140,8 +163,16 @@ if not selected:
     st.warning("Pick at least one index or add custom tickers in the sidebar.")
     st.stop()
 
-with st.spinner(f"Scanning {len(selected)} tickers... (~30-60s on first run)"):
-    df = load_data(tuple(selected), lookback)
+scan_day = get_scan_day_key()
+with st.spinner(f"Scanning {len(selected)} tickers... (~30-60s on first daily visit)"):
+    df = load_data(tuple(selected), lookback, scan_day)
+
+# Mark scan as recorded (best-effort — for sidebar display)
+try:
+    if hours_since >= 24:
+        record_scan()
+except Exception:
+    pass
 
 if df.empty:
     st.error("No data could be fetched. Check tickers / network connection.")
