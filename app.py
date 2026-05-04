@@ -185,7 +185,7 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs([
 
 # ---------- TAB 1: Rankings ----------
 with tab1:
-    colL, colR = st.columns(2)
+    colL = st.columns(1)
 
     with colL:
         st.subheader("🟢 Top Undervalued")
