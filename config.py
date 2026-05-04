@@ -27,7 +27,7 @@ NIKKEI_SAMPLE = [
     "8001.T", "8031.T", "6501.T", "7267.T", "6902.T", "9983.T"
 ]
 
-UNIVERSE = SP500_SAMPLE + STOXX600_SAMPLE + NIKKEI_SAMPLE
+UNIVERSE = SP500_SAMPLE
 
 # ============ FACTOR WEIGHTS ============
 # Composite score = w_fund * fundamentals + w_tech * technicals + w_sent * sentiment
