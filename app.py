@@ -17,6 +17,41 @@ from modules.data_fetcher import fetch_universe
 from modules.sentiment import add_sentiment_column
 from modules.scoring import compute_composite
 
+# ============================================================
+# SECTOR COLOR PALETTE
+# ============================================================
+# GICS-style sector colors. Consistent across all tabs.
+SECTOR_COLORS = {
+    "Technology":             "#4C78A8",  # blue
+    "Communication Services": "#54A24B",  # green
+    "Consumer Cyclical":      "#F58518",  # orange
+    "Consumer Defensive":     "#9D7660",  # brown
+    "Consumer Staples":       "#9D7660",  # brown (alt naming)
+    "Healthcare":             "#E45756",  # red
+    "Financial Services":     "#72B7B2",  # teal
+    "Financials":             "#72B7B2",  # teal (alt naming)
+    "Industrials":            "#B279A2",  # purple
+    "Energy":                 "#EECA3B",  # yellow
+    "Basic Materials":        "#FF9DA6",  # pink
+    "Materials":              "#FF9DA6",  # pink (alt naming)
+    "Real Estate":            "#BAB0AC",  # grey
+    "Utilities":              "#5778A4",  # dark blue
+    "Unknown":                "#CCCCCC",  # light grey
+}
+
+def sector_color(sector: str) -> str:
+    """Return hex color for a sector, with fallback."""
+    return SECTOR_COLORS.get(sector, "#888888")
+
+def sector_badge(sector: str) -> str:
+    """Return HTML for a colored sector badge."""
+    color = sector_color(sector)
+    return (
+        f"<span style='background:{color}; color:white; padding:2px 8px; "
+        f"border-radius:10px; font-size:0.78rem; font-weight:600; "
+        f"white-space:nowrap;'>{sector}</span>"
+    )
+
 
 # ============================================================
 # FORMATTING HELPERS
@@ -112,6 +147,11 @@ selected = list(dict.fromkeys(selected))   # dedupe, preserve order
 
 st.sidebar.caption(f"**{len(selected)} tickers** in universe")
 
+# Sector filter (applied after data loads — see below)
+st.sidebar.markdown("### Sector filter")
+# We can't populate this until df is loaded, so we use a placeholder
+sector_filter_placeholder = st.sidebar.empty()
+
 st.sidebar.markdown("### Factor weights")
 w_fund = st.sidebar.slider("Fundamentals", 0.0, 1.0, WEIGHTS["fundamentals"], 0.05)
 w_tech = st.sidebar.slider("Technicals",   0.0, 1.0, WEIGHTS["technicals"],   0.05)
@@ -192,6 +232,17 @@ def _label(s):
     return "STRONG SELL"
 df["verdict"] = df["score_composite"].apply(_label)
 
+# Now populate the sector filter with actual sectors from the data
+all_sectors = sorted(df["sector"].dropna().unique().tolist())
+with sector_filter_placeholder.container():
+    selected_sectors = st.multiselect(
+        "Show sectors",
+        options=all_sectors,
+        default=all_sectors,
+        key="sector_filter",
+    )
+if selected_sectors:
+    df = df[df["sector"].isin(selected_sectors)].reset_index(drop=True)
 
 # ============================================================
 # TOP METRICS
@@ -203,6 +254,29 @@ c3.metric("Buy", int(((df["score_composite"] >= 0.20) & (df["score_composite"] <
 c4.metric("Sell", int(((df["score_composite"] <= -0.20) & (df["score_composite"] > -0.50)).sum()))
 c5.metric("Strong Sell", int((df["score_composite"] <= -0.50).sum()))
 
+# Sector mini-overview
+st.markdown("##### Sector breakdown")
+sector_summary = df.groupby("sector").agg(
+    n=("ticker", "count"),
+    avg_score=("score_composite", "mean"),
+).reset_index().sort_values("avg_score", ascending=False)
+
+sector_html = "<div style='display:flex; flex-wrap:wrap; gap:6px; margin-bottom:1rem;'>"
+for _, row in sector_summary.iterrows():
+    color = sector_color(row["sector"])
+    score_color = "#1E7B3A" if row["avg_score"] >= 0.20 else (
+                  "#B23B3B" if row["avg_score"] <= -0.20 else "#666")
+    sector_html += (
+        f"<div style='background:{color}1A; border-left:3px solid {color}; "
+        f"padding:6px 10px; border-radius:4px; min-width:130px;'>"
+        f"<div style='font-size:0.78rem; font-weight:600; color:{color};'>{row['sector']}</div>"
+        f"<div style='font-size:0.7rem; color:#666;'>{int(row['n'])} names</div>"
+        f"<div style='font-size:0.85rem; font-weight:700; color:{score_color};'>"
+        f"{row['avg_score']:+.2f}</div>"
+        f"</div>"
+    )
+sector_html += "</div>"
+st.markdown(sector_html, unsafe_allow_html=True)
 
 # ============================================================
 # TABS
@@ -224,18 +298,22 @@ with tab1:
     top_under["fcf_yield"] = (top_under["fcf_yield"]*100).round(1)
     top_under["roe"] = (top_under["roe"]*100).round(1)
     top_under["ret_12m"] = (top_under["ret_12m"]*100).round(1)
-    st.dataframe(
-        top_under.style.format({
-            "price": "{:.2f}", "pe_fwd": "{:.1f}", "ev_ebitda": "{:.1f}",
-            "fcf_yield": "{:.1f}%", "roe": "{:.1f}%", "ret_12m": "{:+.1f}%",
-            "rsi": "{:.0f}",
-            "score_fund": "{:+.2f}", "score_tech": "{:+.2f}",
-            "score_sent": "{:+.2f}", "score_composite": "{:+.2f}",
-        }).background_gradient(
-            subset=["score_composite"], cmap="RdYlGn", vmin=-1, vmax=1
-        ),
-        use_container_width=True, hide_index=True, height=540,
-    )
+    def _color_sector(val):
+    color = sector_color(val)
+    return f"background-color: {color}33; color: #222; font-weight: 600;"
+
+st.dataframe(
+    top_under.style.format({
+        "price": "{:.2f}", "pe_fwd": "{:.1f}", "ev_ebitda": "{:.1f}",
+        "fcf_yield": "{:.1f}%", "roe": "{:.1f}%", "ret_12m": "{:+.1f}%",
+        "rsi": "{:.0f}",
+        "score_fund": "{:+.2f}", "score_tech": "{:+.2f}",
+        "score_sent": "{:+.2f}", "score_composite": "{:+.2f}",
+    }).background_gradient(
+        subset=["score_composite"], cmap="RdYlGn", vmin=-1, vmax=1
+    ).map(_color_sector, subset=["sector"]),
+    use_container_width=True, hide_index=True, height=540,
+)
 
 
 # ---------- TAB 2: Deep Dive ----------
@@ -252,9 +330,15 @@ with tab2:
         # Header
         cA, cB = st.columns([2, 1])
         with cA:
-            st.markdown(f"### {row['name']} ({row['ticker']})")
-            st.caption(f"{row['sector']} · {row['industry']} · {row['country']} · "
-                       f"{row['currency']} {row['price']:.2f}  ·  Mkt cap {_fmt_mcap(row['market_cap'])}")
+    st.markdown(f"### {row['name']} ({row['ticker']})")
+    st.markdown(
+        f"{sector_badge(row['sector'])} "
+        f"<span style='color:#666; font-size:0.9rem;'>"
+        f"{row['industry']} · {row['country']} · "
+        f"{row['currency']} {row['price']:.2f} · "
+        f"Mkt cap {_fmt_mcap(row['market_cap'])}</span>",
+        unsafe_allow_html=True,
+    )
         with cB:
             verdict_class = "verdict-buy" if "BUY" in row["verdict"] else (
                             "verdict-sell" if "SELL" in row["verdict"] else "verdict-hold")
@@ -377,14 +461,14 @@ with tab4:
 
     plot_df = df.dropna(subset=[x_metric, y_metric]).copy()
     fig = px.scatter(
-        plot_df, x=x_metric, y=y_metric,
-        color="score_composite", color_continuous_scale="RdYlGn",
-        range_color=[-1, 1],
-        size=plot_df["market_cap"].fillna(1e9).clip(1e9, 3e12),
-        hover_name="ticker",
-        hover_data={"name": True, "sector": True, "verdict": True,
-                    "score_composite": ":.2f"},
-    )
+    plot_df, x=x_metric, y=y_metric,
+    color="sector",
+    color_discrete_map=SECTOR_COLORS,
+    size=plot_df["market_cap"].fillna(1e9).clip(1e9, 3e12),
+    hover_name="ticker",
+    hover_data={"name": True, "verdict": True,
+                "score_composite": ":.2f"},
+)
     fig.update_layout(height=600)
     st.plotly_chart(fig, use_container_width=True)
 
