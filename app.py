@@ -1,0 +1,434 @@
+"""
+Global Equity Scanner — Streamlit dashboard
+Run with:  streamlit run app.py
+"""
+
+import streamlit as st
+import pandas as pd
+import numpy as np
+import plotly.express as px
+import plotly.graph_objects as go
+from datetime import datetime
+import sys, os
+sys.path.insert(0, os.path.dirname(__file__))
+
+from config import UNIVERSE, WEIGHTS, RUN_SETTINGS, SP500_SAMPLE, STOXX600_SAMPLE, NIKKEI_SAMPLE
+from modules.data_fetcher import fetch_universe
+from modules.sentiment import add_sentiment_column
+from modules.scoring import compute_composite
+
+
+# ============================================================
+# FORMATTING HELPERS
+# ============================================================
+def _fmt(x, dp=2):
+    if pd.isna(x): return "—"
+    try: return f"{x:,.{dp}f}"
+    except: return str(x)
+
+def _fmt_pct(x):
+    if pd.isna(x): return "—"
+    return f"{x*100:+.1f}%"
+
+def _fmt_mcap(x):
+    if pd.isna(x): return "—"
+    if x > 1e12: return f"${x/1e12:.2f}T"
+    if x > 1e9:  return f"${x/1e9:.1f}B"
+    return f"${x/1e6:.0f}M"
+
+# ============================================================
+# PAGE CONFIG
+# ============================================================
+st.set_page_config(
+    page_title="Global Equity Scanner",
+    page_icon="📊",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
+
+# ---- light styling ----
+st.markdown("""
+<style>
+    .main .block-container {padding-top: 2rem; max-width: 1400px;}
+    .metric-card {
+        background: #f6f8fb; padding: 1rem; border-radius: 8px;
+        border-left: 4px solid #0B5394;
+    }
+    .verdict-buy {color: #1E7B3A; font-weight: 700;}
+    .verdict-sell {color: #B23B3B; font-weight: 700;}
+    .verdict-hold {color: #666; font-weight: 600;}
+    .small {font-size: 0.85rem; color: #666;}
+</style>
+""", unsafe_allow_html=True)
+
+
+# ============================================================
+# DATA LOADING (cached)
+# ============================================================
+@st.cache_data(ttl=3600, show_spinner=False)
+def load_data(tickers: tuple, lookback_days: int):
+    """Fetch + sentiment + score. Cached for 1h."""
+    df = fetch_universe(list(tickers), max_workers=RUN_SETTINGS["max_workers"])
+    if df.empty:
+        return df
+    df = add_sentiment_column(df, lookback_days=lookback_days)
+    df = compute_composite(df)
+    return df
+
+
+# ============================================================
+# SIDEBAR — Universe & filters
+# ============================================================
+st.sidebar.title("⚙️ Scanner Controls")
+
+st.sidebar.markdown("### Universe")
+indices = st.sidebar.multiselect(
+    "Indices to scan",
+    options=["S&P 500 (sample)", "STOXX 600 (sample)", "Nikkei (sample)"],
+    default=["S&P 500 (sample)", "STOXX 600 (sample)", "Nikkei (sample)"],
+)
+
+custom_tickers = st.sidebar.text_area(
+    "Custom tickers (comma-separated)",
+    value="",
+    help="Add e.g. ADM, BG, WLMIY for agri/commodities exposure"
+)
+
+# Build universe
+selected = []
+if "S&P 500 (sample)" in indices: selected += SP500_SAMPLE
+if "STOXX 600 (sample)" in indices: selected += STOXX600_SAMPLE
+if "Nikkei (sample)" in indices: selected += NIKKEI_SAMPLE
+if custom_tickers.strip():
+    selected += [t.strip().upper() for t in custom_tickers.split(",") if t.strip()]
+selected = list(dict.fromkeys(selected))   # dedupe, preserve order
+
+st.sidebar.caption(f"**{len(selected)} tickers** in universe")
+
+st.sidebar.markdown("### Factor weights")
+w_fund = st.sidebar.slider("Fundamentals", 0.0, 1.0, WEIGHTS["fundamentals"], 0.05)
+w_tech = st.sidebar.slider("Technicals",   0.0, 1.0, WEIGHTS["technicals"],   0.05)
+w_sent = st.sidebar.slider("Sentiment",    0.0, 1.0, WEIGHTS["sentiment"],    0.05)
+total_w = w_fund + w_tech + w_sent or 1
+w_fund, w_tech, w_sent = w_fund/total_w, w_tech/total_w, w_sent/total_w
+st.sidebar.caption(f"Normalized: F={w_fund:.2f} · T={w_tech:.2f} · S={w_sent:.2f}")
+
+st.sidebar.markdown("### News")
+lookback = st.sidebar.slider("News lookback (days)", 1, 14, RUN_SETTINGS["news_lookback_days"])
+
+st.sidebar.markdown("---")
+run_btn = st.sidebar.button("🔄 Refresh data", type="primary", use_container_width=True)
+st.sidebar.caption("Data is cached for 1h. Click to force refresh.")
+if run_btn:
+    st.cache_data.clear()
+
+
+# ============================================================
+# HEADER
+# ============================================================
+st.title("📊 Global Equity Scanner")
+st.markdown(
+    "<div class='small'>Multi-factor screen across global large-caps · "
+    "Fundamentals + Technicals + News sentiment</div>",
+    unsafe_allow_html=True,
+)
+st.markdown("---")
+
+
+# ============================================================
+# LOAD DATA
+# ============================================================
+if not selected:
+    st.warning("Pick at least one index or add custom tickers in the sidebar.")
+    st.stop()
+
+with st.spinner(f"Scanning {len(selected)} tickers... (~30-60s on first run)"):
+    df = load_data(tuple(selected), lookback)
+
+if df.empty:
+    st.error("No data could be fetched. Check tickers / network connection.")
+    st.stop()
+
+# Apply user weights (override config defaults)
+df["score_composite"] = (
+    w_fund * df["score_fund"] + w_tech * df["score_tech"] + w_sent * df["score_sent"]
+).clip(-1, 1)
+
+# Re-label verdicts
+def _label(s):
+    if s >= 0.50: return "STRONG BUY"
+    if s >= 0.20: return "BUY"
+    if s >= -0.20: return "HOLD"
+    if s >= -0.50: return "SELL"
+    return "STRONG SELL"
+df["verdict"] = df["score_composite"].apply(_label)
+
+
+# ============================================================
+# TOP METRICS
+# ============================================================
+c1, c2, c3, c4, c5 = st.columns(5)
+c1.metric("Universe", f"{len(df)}")
+c2.metric("Strong Buy", int((df["score_composite"] >= 0.50).sum()))
+c3.metric("Buy", int(((df["score_composite"] >= 0.20) & (df["score_composite"] < 0.50)).sum()))
+c4.metric("Sell", int(((df["score_composite"] <= -0.20) & (df["score_composite"] > -0.50)).sum()))
+c5.metric("Strong Sell", int((df["score_composite"] <= -0.50).sum()))
+
+
+# ============================================================
+# TABS
+# ============================================================
+tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    "🎯 Rankings", "🔍 Deep Dive", "🗺️ Sector Map", "📈 Scatter", "📥 Export"
+])
+
+
+# ---------- TAB 1: Rankings ----------
+with tab1:
+    colL, colR = st.columns(2)
+
+    with colL:
+        st.subheader("🟢 Top Undervalued")
+        top_n = st.slider("Show top N", 5, 40, 15, key="under_n")
+        top_under = df.nlargest(top_n, "score_composite")[[
+            "ticker", "name", "sector", "country", "price", "pe_fwd",
+            "ev_ebitda", "fcf_yield", "roe", "ret_12m", "rsi",
+            "score_fund", "score_tech", "score_sent", "score_composite", "verdict"
+        ]].copy()
+        top_under["fcf_yield"] = (top_under["fcf_yield"]*100).round(1)
+        top_under["roe"] = (top_under["roe"]*100).round(1)
+        top_under["ret_12m"] = (top_under["ret_12m"]*100).round(1)
+        st.dataframe(
+            top_under.style.format({
+                "price": "{:.2f}", "pe_fwd": "{:.1f}", "ev_ebitda": "{:.1f}",
+                "fcf_yield": "{:.1f}%", "roe": "{:.1f}%", "ret_12m": "{:+.1f}%",
+                "rsi": "{:.0f}",
+                "score_fund": "{:+.2f}", "score_tech": "{:+.2f}",
+                "score_sent": "{:+.2f}", "score_composite": "{:+.2f}",
+            }).background_gradient(
+                subset=["score_composite"], cmap="RdYlGn", vmin=-1, vmax=1
+            ),
+            use_container_width=True, hide_index=True, height=540,
+        )
+
+    with colR:
+        st.subheader("🔴 Top Overvalued")
+        top_over = df.nsmallest(top_n, "score_composite")[[
+            "ticker", "name", "sector", "country", "price", "pe_fwd",
+            "ev_ebitda", "fcf_yield", "roe", "ret_12m", "rsi",
+            "score_fund", "score_tech", "score_sent", "score_composite", "verdict"
+        ]].copy()
+        top_over["fcf_yield"] = (top_over["fcf_yield"]*100).round(1)
+        top_over["roe"] = (top_over["roe"]*100).round(1)
+        top_over["ret_12m"] = (top_over["ret_12m"]*100).round(1)
+        st.dataframe(
+            top_over.style.format({
+                "price": "{:.2f}", "pe_fwd": "{:.1f}", "ev_ebitda": "{:.1f}",
+                "fcf_yield": "{:.1f}%", "roe": "{:.1f}%", "ret_12m": "{:+.1f}%",
+                "rsi": "{:.0f}",
+                "score_fund": "{:+.2f}", "score_tech": "{:+.2f}",
+                "score_sent": "{:+.2f}", "score_composite": "{:+.2f}",
+            }).background_gradient(
+                subset=["score_composite"], cmap="RdYlGn", vmin=-1, vmax=1
+            ),
+            use_container_width=True, hide_index=True, height=540,
+        )
+
+
+# ---------- TAB 2: Deep Dive ----------
+with tab2:
+    st.subheader("Per-ticker deep dive")
+    pick = st.selectbox(
+        "Choose a ticker",
+        options=df.sort_values("score_composite", ascending=False)["ticker"].tolist(),
+        format_func=lambda t: f"{t}  —  {df[df.ticker==t].iloc[0]['name']}  ({df[df.ticker==t].iloc[0]['verdict']})",
+    )
+    if pick:
+        row = df[df.ticker == pick].iloc[0]
+
+        # Header
+        cA, cB = st.columns([2, 1])
+        with cA:
+            st.markdown(f"### {row['name']} ({row['ticker']})")
+            st.caption(f"{row['sector']} · {row['industry']} · {row['country']} · "
+                       f"{row['currency']} {row['price']:.2f}  ·  Mkt cap {_fmt_mcap(row['market_cap'])}")
+        with cB:
+            verdict_class = "verdict-buy" if "BUY" in row["verdict"] else (
+                            "verdict-sell" if "SELL" in row["verdict"] else "verdict-hold")
+            st.markdown(
+                f"<div class='metric-card'><div class='small'>Composite Score</div>"
+                f"<div style='font-size:2rem;'><b>{row['score_composite']:+.2f}</b></div>"
+                f"<div class='{verdict_class}'>{row['verdict']}</div></div>",
+                unsafe_allow_html=True,
+            )
+
+        st.markdown("---")
+
+        # Score breakdown chart
+        scores = pd.DataFrame({
+            "Factor": ["Fundamentals", "Technicals", "Sentiment"],
+            "Score": [row["score_fund"], row["score_tech"], row["score_sent"]],
+            "Weight": [w_fund, w_tech, w_sent],
+        })
+        scores["Contribution"] = scores["Score"] * scores["Weight"]
+        fig = go.Figure()
+        fig.add_trace(go.Bar(
+            x=scores["Factor"], y=scores["Score"],
+            marker_color=["#0B5394", "#5BA85B", "#D67676"],
+            text=[f"{s:+.2f}" for s in scores["Score"]],
+            textposition="outside",
+        ))
+        fig.update_layout(
+            title="Sub-scores (range: -1 to +1)",
+            yaxis_range=[-1.1, 1.1], height=320,
+            margin=dict(t=40, b=20, l=20, r=20),
+        )
+        fig.add_hline(y=0, line_dash="dash", line_color="grey")
+        st.plotly_chart(fig, use_container_width=True)
+
+        # Fundamentals & technicals tables
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown("**Fundamentals**")
+            fund_df = pd.DataFrame({
+                "Metric": ["Forward P/E", "Trailing P/E", "P/B", "EV/EBITDA", "PEG",
+                           "FCF Yield", "Dividend Yield", "ROE", "ROA",
+                           "Debt/Equity", "Profit Margin", "Revenue Growth", "Earnings Growth"],
+                "Value": [
+                    _fmt(row.get("pe_fwd")), _fmt(row.get("pe_ttm")), _fmt(row.get("pb")),
+                    _fmt(row.get("ev_ebitda")), _fmt(row.get("peg")),
+                    _fmt_pct(row.get("fcf_yield")), _fmt_pct(row.get("div_yield")),
+                    _fmt_pct(row.get("roe")), _fmt_pct(row.get("roa")),
+                    _fmt(row.get("debt_equity")), _fmt_pct(row.get("profit_margin")),
+                    _fmt_pct(row.get("rev_growth")), _fmt_pct(row.get("earnings_growth")),
+                ],
+            })
+            st.dataframe(fund_df, hide_index=True, use_container_width=True)
+
+        with col2:
+            st.markdown("**Technicals**")
+            tech_df = pd.DataFrame({
+                "Metric": ["1m return", "3m return", "12m return",
+                           "RSI(14)", "Price vs SMA50", "Price vs SMA200",
+                           "30d realized vol", "Analyst target", "Analyst recommendation"],
+                "Value": [
+                    _fmt_pct(row.get("ret_1m")), _fmt_pct(row.get("ret_3m")),
+                    _fmt_pct(row.get("ret_12m")), _fmt(row.get("rsi"), 0),
+                    f"{(row['price']/row['sma50']-1)*100:+.1f}%" if row.get('sma50') else "—",
+                    f"{(row['price']/row['sma200']-1)*100:+.1f}%" if row.get('sma200') and not pd.isna(row['sma200']) else "—",
+                    _fmt_pct(row.get("vol_30d")),
+                    _fmt(row.get("target_mean")),
+                    str(row.get("recommendation", "—")).upper(),
+                ],
+            })
+            st.dataframe(tech_df, hide_index=True, use_container_width=True)
+
+        # News
+        st.markdown("**Recent headlines**")
+        if row.get("news"):
+            for item in row["news"][:8]:
+                title = item.get("title", "")
+                publisher = item.get("publisher", "")
+                link = item.get("link", "")
+                ts = item.get("providerPublishTime", 0)
+                date = datetime.fromtimestamp(ts).strftime("%Y-%m-%d") if ts else ""
+                if title:
+                    st.markdown(f"- [{title}]({link})  *— {publisher}, {date}*")
+        else:
+            st.caption("No recent headlines.")
+
+
+# ---------- TAB 3: Sector heatmap ----------
+with tab3:
+    st.subheader("Sector valuation heatmap")
+    sec = df.groupby("sector").agg(
+        avg_score=("score_composite", "mean"),
+        count=("ticker", "count"),
+        avg_pe=("pe_fwd", "median"),
+        avg_ret_12m=("ret_12m", "median"),
+    ).reset_index()
+    sec = sec[sec["count"] >= 2].sort_values("avg_score", ascending=True)
+
+    fig = px.bar(
+        sec, x="avg_score", y="sector", orientation="h",
+        color="avg_score", color_continuous_scale="RdYlGn",
+        range_color=[-0.5, 0.5],
+        labels={"avg_score": "Avg composite score", "sector": ""},
+        hover_data={"count": True, "avg_pe": ":.1f", "avg_ret_12m": ":.1%"},
+        text=sec["avg_score"].apply(lambda x: f"{x:+.2f}"),
+    )
+    fig.update_layout(height=500, margin=dict(t=20, b=20))
+    st.plotly_chart(fig, use_container_width=True)
+    st.caption(f"Sectors with ≥2 names. {len(df)} tickers across {len(sec)} sectors.")
+
+
+# ---------- TAB 4: Scatter ----------
+with tab4:
+    st.subheader("Valuation vs Quality scatter")
+    st.caption("Each dot = one stock. Hover for details. Use this to spot value traps "
+               "(high score but weak fundamentals) and quality compounders.")
+
+    cc1, cc2 = st.columns(2)
+    x_metric = cc1.selectbox("X axis", ["pe_fwd", "ev_ebitda", "fcf_yield", "ret_12m", "rsi"], index=0)
+    y_metric = cc2.selectbox("Y axis", ["roe", "score_fund", "score_tech", "score_composite", "earnings_growth"], index=0)
+
+    plot_df = df.dropna(subset=[x_metric, y_metric]).copy()
+    fig = px.scatter(
+        plot_df, x=x_metric, y=y_metric,
+        color="score_composite", color_continuous_scale="RdYlGn",
+        range_color=[-1, 1],
+        size=plot_df["market_cap"].fillna(1e9).clip(1e9, 3e12),
+        hover_name="ticker",
+        hover_data={"name": True, "sector": True, "verdict": True,
+                    "score_composite": ":.2f"},
+    )
+    fig.update_layout(height=600)
+    st.plotly_chart(fig, use_container_width=True)
+
+
+# ---------- TAB 5: Export ----------
+with tab5:
+    st.subheader("Export results")
+    export_df = df.drop(columns=["news"], errors="ignore").copy()
+    csv = export_df.to_csv(index=False)
+    st.download_button(
+        "📥 Download full results (CSV)",
+        data=csv,
+        file_name=f"equity_scan_{datetime.now():%Y%m%d_%H%M}.csv",
+        mime="text/csv",
+        use_container_width=True,
+    )
+    st.dataframe(export_df, use_container_width=True, height=600)
+
+
+# ============================================================
+# FOOTER / METHODOLOGY
+# ============================================================
+with st.expander("ℹ️ Methodology & caveats"):
+    st.markdown("""
+    **Composite score** = weighted blend of three sub-scores, each in **[-1, +1]**:
+
+    - **Fundamentals (default 55%)** — sector-relative z-scores of forward P/E,
+      EV/EBITDA, FCF yield, PEG, ROE, debt/equity. Lower valuation multiples and
+      higher quality push the score up.
+    - **Technicals (default 25%)** — 3m momentum, RSI(14) (mean-reversion at extremes),
+      price vs 200d SMA (trend).
+    - **Sentiment (default 20%)** — average lexicon-based sentiment of recent headlines
+      (last N days). For production, swap in FinBERT or an LLM API in `modules/sentiment.py`.
+
+    **Verdict bands**: Strong Buy ≥ +0.50 · Buy ≥ +0.20 · Hold · Sell ≤ -0.20 · Strong Sell ≤ -0.50.
+
+    **Caveats** — this is a screener, not a recommendation engine.
+    Composite scores cluster reasonably, but extreme scores often reflect data issues
+    (one-offs in earnings, stale fundamentals) or genuine business problems
+    (value traps). Always cross-check with primary sources before acting.
+
+    **Data sources** — yfinance for fundamentals/prices/news (free, occasionally
+    flaky). For institutional use, replace `data_fetcher.py` with Refinitiv,
+    Bloomberg, or Financial Modeling Prep.
+    """)
+
+
+# ============================================================
+# END
+# ============================================================
