@@ -12,7 +12,7 @@ from datetime import datetime
 import sys, os
 sys.path.insert(0, os.path.dirname(__file__))
 
-from config import UNIVERSE, WEIGHTS, RUN_SETTINGS, SP500_SAMPLE, STOXX600_SAMPLE, NIKKEI_SAMPLE
+from config import UNIVERSE, WEIGHTS, RUN_SETTINGS, US_MEGACAPS
 from modules.data_fetcher import fetch_universe
 from modules.sentiment import add_sentiment_column
 from modules.scoring import compute_composite
@@ -83,9 +83,9 @@ st.sidebar.title("⚙️ Scanner Controls")
 
 st.sidebar.markdown("### Universe")
 indices = st.sidebar.multiselect(
-    "Indices to scan",
-    options=["S&P 500 (sample)", "STOXX 600 (sample)", "Nikkei (sample)"],
-    default=["S&P 500 (sample)", "STOXX 600 (sample)", "Nikkei (sample)"],
+    "Index",
+    options=["US Top 50"],
+    default=["US Top 50"],
 )
 
 custom_tickers = st.sidebar.text_area(
@@ -96,9 +96,7 @@ custom_tickers = st.sidebar.text_area(
 
 # Build universe
 selected = []
-if "S&P 500 (sample)" in indices: selected += SP500_SAMPLE
-if "STOXX 600 (sample)" in indices: selected += STOXX600_SAMPLE
-if "Nikkei (sample)" in indices: selected += NIKKEI_SAMPLE
+if "US Top 50" in indices: selected += US_MEGACAPS
 if custom_tickers.strip():
     selected += [t.strip().upper() for t in custom_tickers.split(",") if t.strip()]
 selected = list(dict.fromkeys(selected))   # dedupe, preserve order
