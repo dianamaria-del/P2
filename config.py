@@ -3,31 +3,24 @@ Configuration for the global equity scanner.
 Edit this file to change universe, weights, or email settings.
 """
 
-# ============ UNIVERSE ============
-# Top liquid names per index. Expand to full constituents in production.
-# Full lists: scrape Wikipedia or use index provider files.
+# ============ UNIVERSE: Top 50 US companies by market cap ============
+# At ~4 API calls per ticker, ~50 tickers = ~200 calls per scan.
+# Fits within FMP Basic 250-calls/day budget with 50 calls of headroom.
 
-SP500_SAMPLE = [
-    "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "BRK-B",
-    "JPM", "V", "JNJ", "WMT", "PG", "MA", "HD", "CVX", "ABBV", "PFE",
-    "KO", "PEP", "MRK", "BAC", "TMO", "COST", "DIS", "ADBE", "NFLX",
-    "CRM", "AMD", "INTC", "ORCL", "MCD", "NKE", "BA", "GS", "CAT", "GE"
+US_MEGACAPS = [
+    "NVDA", "GOOGL", "AAPL", "MSFT", "AMZN", "AVGO", "META", "TSLA", "BRK-B", "WMT",
+    "LLY", "JPM", "V", "XOM", "MA", "ORCL", "JNJ", "COST", "PG", "HD",
+    "NFLX", "BAC", "ABBV", "CVX", "KO", "CRM", "TMUS", "WFC", "CSCO", "PM",
+    "IBM", "ABT", "MCD", "LIN", "GE", "MRK", "AXP", "DIS", "NOW", "ISRG",
+    "T", "PEP", "GS", "INTU", "RTX", "TXN", "BKNG", "QCOM", "CAT",
 ]
 
-STOXX600_SAMPLE = [
-    "ASML.AS", "NESN.SW", "NOVO-B.CO", "MC.PA", "RMS.PA", "SAP.DE",
-    "SHEL.L", "AZN.L", "HSBA.L", "TTE.PA", "OR.PA", "SIE.DE", "ALV.DE",
-    "BP.L", "ULVR.L", "LIN.DE", "SAN.PA", "BNP.PA", "AIR.PA", "RIO.L",
-    "GLEN.L", "DGE.L", "BATS.L", "ROG.SW", "NOVN.SW"
-]
+UNIVERSE = US_MEGACAPS
 
-NIKKEI_SAMPLE = [
-    "7203.T", "6758.T", "9984.T", "8306.T", "6861.T", "9432.T", "8035.T",
-    "7974.T", "6098.T", "4063.T", "6594.T", "8316.T", "9433.T", "4502.T",
-    "8001.T", "8031.T", "6501.T", "7267.T", "6902.T", "9983.T"
-]
-
-UNIVERSE = SP500_SAMPLE
+# Legacy aliases (kept so app.py imports don't break)
+SP500_SAMPLE = US_MEGACAPS
+STOXX600_SAMPLE = []
+NIKKEI_SAMPLE = []
 
 # ============ FACTOR WEIGHTS ============
 # Composite score = w_fund * fundamentals + w_tech * technicals + w_sent * sentiment
