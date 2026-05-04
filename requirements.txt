@@ -4,6 +4,7 @@ pandas>=2.0
 numpy>=1.24
 plotly>=5.18
 matplotlib>=3.7
+curl_cffi>=0.7
 
 # Optional: better sentiment via FinBERT (uncomment to use)
 # transformers>=4.40
