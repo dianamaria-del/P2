@@ -12,6 +12,31 @@ from datetime import datetime
 import sys, os
 sys.path.insert(0, os.path.dirname(__file__))
 
+# ============================================================
+# PASSWORD PROTECTION
+# ============================================================
+def check_password():
+    """Returns True if user entered correct password."""
+    def password_entered():
+        if st.session_state["password"] == st.secrets.get("APP_PASSWORD", ""):
+            st.session_state["password_correct"] = True
+            del st.session_state["password"]
+        else:
+            st.session_state["password_correct"] = False
+
+    if "password_correct" not in st.session_state:
+        st.text_input("Password", type="password", on_change=password_entered, key="password")
+        return False
+    elif not st.session_state["password_correct"]:
+        st.text_input("Password", type="password", on_change=password_entered, key="password")
+        st.error("😕 Password incorrect")
+        return False
+    else:
+        return True
+
+if not check_password():
+    st.stop()
+
 from config import UNIVERSE, WEIGHTS, RUN_SETTINGS, US_MEGACAPS
 from modules.data_fetcher import fetch_universe
 from modules.sentiment import add_sentiment_column
